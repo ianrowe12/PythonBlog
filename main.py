@@ -17,6 +17,8 @@ import os
 # The Procfile also says to use gunicorn to serve your web app.
 # And finally it specifies the Flask app object is the main.py file.
 # That way the hosting provider knows about the entry point for the app and what our app is called.
+# When uploading app to host provider like render, they'll automatically change the line from main:app to app:app
+# You have to manually revert this
 
 # App initialization
 app = Flask(__name__)
