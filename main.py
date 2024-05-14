@@ -10,10 +10,18 @@ from sqlalchemy import Integer, String, Text, ForeignKey
 from werkzeug.security import generate_password_hash, check_password_hash
 from forms import CreatePostForm, RegisterForm, LoginForm, CommentForm
 from typing import List
+import os
+
+# In the Procfile. file in this folder:
+# This will tell our hosting provider to create a web worker that is able to receive HTTP requests.
+# The Procfile also says to use gunicorn to serve your web app.
+# And finally it specifies the Flask app object is the main.py file.
+# That way the hosting provider knows about the entry point for the app and what our app is called.
 
 # App initialization
 app = Flask(__name__)
-app.config['SECRET_KEY'] = '8BYkEfBA6O6donzWlSihBXox7C0sKR6b'
+app.config['SECRET_KEY'] = os.environ.get('FLASK_KEY')
+
 ckeditor = CKEditor(app)
 Bootstrap5(app)
 
@@ -32,7 +40,8 @@ gravatar = Gravatar(app,
 class Base(DeclarativeBase):
     pass
 
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///posts.db'
+
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('SQLITE_URI')
 
 db = SQLAlchemy(model_class=Base)
 db.init_app(app)
@@ -63,6 +72,7 @@ def admin_required(f):
             return f(*args, **kwargs)
         else:
             abort(403)
+
     wrap.__name__ = f.__name__  # Necessary to wrap more than one function with decorator,
     # otherwise: AssertionError: View function mapping is overwriting an existing endpoint function: wrap
     # it is caused by trying to register a few functions with the name wrap:
@@ -92,6 +102,7 @@ class User(db.Model, UserMixin):
     posts: Mapped[List["BlogPost"]] = relationship(back_populates="author")
     comments: Mapped[List["Comment"]] = relationship(back_populates="author")
 
+
 class Comment(db.Model):
     __tablename__ = "comments"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -100,7 +111,6 @@ class Comment(db.Model):
     post_id: Mapped[int] = mapped_column(ForeignKey('blog_posts.id'), nullable=False)
     parent_post: Mapped["BlogPost"] = relationship(back_populates="comments")
     body: Mapped[str] = mapped_column(Text, nullable=False)
-
 
 
 with app.app_context():
@@ -156,20 +166,22 @@ def get_all_posts():
 
 
 @app.route("/post/<int:post_id>", methods=['GET', 'POST'])
-@login_required
 def show_post(post_id):
     form = CommentForm()
     requested_post = db.get_or_404(BlogPost, post_id)
     comments = requested_post.comments
     if form.validate_on_submit():
-        new_comment = Comment(
-            author=current_user,
-            body=form.body.data,
-            parent_post=requested_post,
-        )
-        db.session.add(new_comment)
-        db.session.commit()
-        return redirect(url_for('show_post', post_id=post_id))
+        if current_user.is_anonymous:
+            return redirect(url_for('login'))
+        else:
+            new_comment = Comment(
+                author=current_user,
+                body=form.body.data,
+                parent_post=requested_post,
+            )
+            db.session.add(new_comment)
+            db.session.commit()
+            return redirect(url_for('show_post', post_id=post_id))
 
     return render_template("post.html", post=requested_post, form=form)
 
@@ -237,6 +249,4 @@ def contact():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5002)
-
-
+    app.run(debug=False, port=5002)
